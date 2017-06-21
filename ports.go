@@ -56,12 +56,11 @@ type jsonPortII struct {
 	VLAN			int			`json:"network_id"`
 }
 
-func getPort(PortName string) jsonPort {
+func getPort(PortName string, c *authInfo) jsonPort {
 	var result jsonPort
 	switchName := strings.Split(PortName, ":")[0]
-	//result.Name = strings.Split(PortName, ":")[1]
 	result.Name = PortName
-	_, _, config := getNamedConfiglet(switchName + "-ports")
+	_, _, config := getNamedConfiglet(switchName + "-ports", c)
 	ports := strings.Split(config, "!")
 	for _, port := range ports {
 		if strings.Contains(port, strings.Split(PortName, ":")[1]) {
@@ -85,10 +84,10 @@ func getPort(PortName string) jsonPort {
 	return result
 }
 
-func getPorts (switchNames []string) []jsonPort {
+func getPorts (switchNames []string, c *authInfo) []jsonPort {
 	var switchPorts []jsonPort 
 	for _, s := range switchNames {
-		_, _, config := getNamedConfiglet(s + "-ports")
+		_, _, config := getNamedConfiglet(s + "-ports", c)
 		ports := strings.Split(config, "!")
 		for _, port := range ports {
 			var temp jsonPort
@@ -121,65 +120,39 @@ func getPorts (switchNames []string) []jsonPort {
 	return switchPorts
 }
 
-func getContainerKey(containerName string) string {
-	cookie := login()
-	topologyURL = strings.Replace(topologyURL, "changeme", containerName, 1)
-	body := getCVP(baseURL + topologyURL, cookie)
-	_ =logout(cookie)
-	
-	var topResp topologySearch
-	_ = json.Unmarshal(body, &topResp)
-
-	return topResp.ContainerList[0].Key
-}
-
-func getSwitchNames(containerKey string) []string {
-	cookie := login()
-	netElementListByContainerURL = strings.Replace(netElementListByContainerURL, "changeme", containerKey, 1)
-	body := getCVP(baseURL + netElementListByContainerURL, cookie)
-	_ =logout(cookie)
-	
-	var elementList netElementList
-	_ = json.Unmarshal(body, &elementList)
-	
-	var switches []string
-	
-	for _, element := range elementList.NetElementList {
-		switches = append(switches, element.Fqdn)
-	}	
-	
-	return switches
-}
-
 func ports(w http.ResponseWriter, r *http.Request) {
+	c := &authInfo{}
+	extractCred(w, r, c)
 	if r.Method == "GET" {
-		key := getContainerKey(container)
-		switches := getSwitchNames(key)
+		key := getContainerKey(container, c)
+		switches := getSwitchNames(key, c)
 		var response netPorts
-		response.Ports = getPorts(switches)
+		response.Ports = getPorts(switches, c)
 		temp, _ := json.Marshal(response)
 		fmt.Fprintln(w, string(temp))
 	}
 	if r.Method == "POST" {
 		b, _ := ioutil.ReadAll(r.Body)
 		r.Body.Close()
-		trunkToPort(&b)
+		trunkToPort(&b, c)
 	}
 }
 
 func port(w http.ResponseWriter, r *http.Request) {
+	c := &authInfo{}
+	extractCred(w, r, c)
 	components := strings.Split(r.URL.Path, "/")
 	p := components[len(components)-1]
 	if r.Method == "GET" {
 		var response netPort
-		response.Port = getPort(p)
+		response.Port = getPort(p, c)
 		temp, _ := json.Marshal(response)
 		fmt.Fprintln(w, string(temp))
 	}
 	if r.Method == "PUT" {
 		b, _ := ioutil.ReadAll(r.Body)
 		r.Body.Close()
-		portChange(&b, r.URL.Path)
+		portChange(&b, r.URL.Path, c)
 	}
 }
 
@@ -248,15 +221,15 @@ func portChangetoAccess(port string, vlan int) string {
 	return newport
 }
 
-func portChange(request *[]byte, path string)  {
+func portChange(request *[]byte, path string, c *authInfo)  {
 	var p requestPort
 	_ = json.Unmarshal(*request, &p)
-	c := strings.Split(path, "/")
-	port := c[len(c)-1]
+	b := strings.Split(path, "/")
+	port := b[len(b)-1]
 	nameComponents := strings.Split(port, ":")
 	switchName := nameComponents[0]
 	intName := nameComponents[1]
-	key, name, config := getNamedConfiglet(switchName + "-ports")
+	key, name, config := getNamedConfiglet(switchName + "-ports", c)
 	ports := strings.Split(config, "!")
 	for i, port := range ports {
 		if strings.Contains(port, "interface " + intName) {
@@ -273,16 +246,16 @@ func portChange(request *[]byte, path string)  {
 		ports[i] = port
 	}
 	config = strings.Join(ports, "!")
-	_ = updateConfiglet(key, name, config)
+	_ = updateConfiglet(key, name, config, c)
 }
 
-func trunkToPort(request *[]byte)  {
+func trunkToPort(request *[]byte, c *authInfo)  {
 	var p requestPort
 	_ = json.Unmarshal(*request, &p)
-	c := strings.Split(p.Port.Name, ":")
-	switchName := c[0]
-	intName := c[1]
-	key, name, config := getNamedConfiglet(switchName + "-ports")
+	b := strings.Split(p.Port.Name, ":")
+	switchName := b[0]
+	intName := b[1]
+	key, name, config := getNamedConfiglet(switchName + "-ports", c)
 	ports := strings.Split(config, "!")
 	for i, port := range ports {
 		if strings.Contains(port, "interface " + intName) {
@@ -297,6 +270,6 @@ func trunkToPort(request *[]byte)  {
 		ports[i] = port
 	}
 	config = strings.Join(ports, "!")
-	_ = updateConfiglet(key, name, config)
+	_ = updateConfiglet(key, name, config, c)
 }
  

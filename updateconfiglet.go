@@ -13,8 +13,22 @@ type configlet struct {
 
 var updateConfigletURL = "/cvpservice/configlet/updateConfiglet.do"
 
-func updateConfiglet(key string, name string, config string) []byte {
+/*func updateConfiglet(key string, name string, config string) []byte {
 	cookie := login()
+	confupdate := config
+	tempUpdate := configlet{confupdate, key, name}
+	updateBody, _ := json.Marshal(tempUpdate)
+	response := postCVP(baseURL + updateConfigletURL, cookie, updateBody)
+	_ =logout(cookie)
+	return response
+}*/
+
+func updateConfiglet(key string, name string, config string, c *authInfo) []byte {
+	cookie := login(c)
+	if cookie.Name == "" {
+		var t []byte
+		return t
+	}
 	confupdate := config
 	tempUpdate := configlet{confupdate, key, name}
 	updateBody, _ := json.Marshal(tempUpdate)

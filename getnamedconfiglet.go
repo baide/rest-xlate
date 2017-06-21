@@ -14,8 +14,12 @@ type NamedConfigletResponse struct {
 
 var getNamedConfigletURL = "/cvpservice/configlet/getConfigletByName.do?name="
 
-func getNamedConfiglet(configletName string) (string, string, string) {
-	cookie := login()
+
+func getNamedConfiglet(configletName string, c *authInfo) (string, string, string) {
+	cookie := login(c)
+	if cookie.Name == "" {
+		return "", "", ""
+	}
 	body := getCVP(baseURL + getNamedConfigletURL + configletName, cookie)
     var result NamedConfigletResponse
     

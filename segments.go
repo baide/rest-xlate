@@ -24,38 +24,42 @@ type jsonSegment struct {
 }
 
 func segments(w http.ResponseWriter, r *http.Request) {
+	c := &authInfo{}
+	extractCred(w, r, c)
 	if r.Method == "GET" {
 		var response netSegments
-		response.Segments = getSegments(container)
+		response.Segments = getSegments(container, c)
 		temp, _ := json.Marshal(response)
 		fmt.Fprintln(w, string(temp))
 	}
 	if r.Method == "POST" {
 		b, _ := ioutil.ReadAll(r.Body)
 		r.Body.Close()
-		newVlan(&b)
+		newVlan(&b, c)
 	}
 }
 
 func segment(w http.ResponseWriter, r *http.Request) {
+	c := &authInfo{}
+	extractCred(w, r, c)
 	components := strings.Split(r.URL.Path, "/")
 	p := components[len(components)-1]
 	if r.Method == "GET" {
 		var response netSegment
-		response.Segment = getSegment(container, p)
+		response.Segment = getSegment(container, p, c)
 		temp, _ := json.Marshal(response)
 		fmt.Fprintln(w, string(temp))
 	}
 	if r.Method == "PUT" {
 		b, _ := ioutil.ReadAll(r.Body)
 		r.Body.Close()
-		trunkChange(&b, r.URL.Path)
+		trunkChange(&b, r.URL.Path, c)
 	}
 }
 
-func getSegment(container string, vlanTarget string) jsonSegment {
+func getSegment(container string, vlanTarget string	, c *authInfo) jsonSegment {
 	var result jsonSegment
-	_, _, config := getNamedConfiglet(container + "-vlans")
+	_, _, config := getNamedConfiglet(container + "-vlans", c)
 	vlans := strings.Split(config, "!")
 	for _, vlan := range vlans {
 		if strings.Contains(vlan, vlanTarget) {
@@ -75,9 +79,9 @@ func getSegment(container string, vlanTarget string) jsonSegment {
 	return result
 }
 
-func getSegments (container string) []jsonSegment {
+func getSegments (container string, c *authInfo) []jsonSegment {
 	var segments []jsonSegment 
-	_, _, config := getNamedConfiglet(container + "-vlans")
+	_, _, config := getNamedConfiglet(container + "-vlans", c)
 	vlans := strings.Split(config, "!")
 	for _, vlan := range vlans {
 		var temp jsonSegment
@@ -97,9 +101,8 @@ func getSegments (container string) []jsonSegment {
 	return segments
 }
 
-func newVlan(request *[]byte)  {
-	key, name, config := getNamedConfiglet(container + "-vlans")
-	//_, _, config := getNamedConfiglet(container + "-vlans")
+func newVlan(request *[]byte, c *authInfo)  {
+	key, name, config := getNamedConfiglet(container + "-vlans", c)
 	var v jsonSegment
 	_ = json.Unmarshal(*request, &v)
 	vlans := strings.Split(config, "!")
@@ -131,8 +134,7 @@ func newVlan(request *[]byte)  {
 			}
 		}
 		config = strings.Join(newConfig, "\n!\n")
-		//fmt.Println("\n" + config)
-		_ = updateConfiglet(key, name, config)
+		_ = updateConfiglet(key, name, config, c)
 	}
 }
 				

@@ -18,6 +18,7 @@ func main() {
 	r.HandleFunc("/trunks/{int}", trunk).Methods("GET", "PUT")
 	r.HandleFunc("/segments", segments).Methods("GET", "POST")
 	r.HandleFunc("/segments/{vlan}", segment).Methods("GET")
+	//r.HandleFunc("/test-auth", test).Methods("POST")
 	
 	log.Fatal(http.ListenAndServe("localhost:8000", r))
 }

@@ -13,11 +13,11 @@ import (
 )
 
 type netTrunk struct {
-	Port			jsonTrunk	`json:"port"`
+	Port			jsonTrunk	`json:"trunk"`
 }
 
 type netTrunks struct {
-	Ports			[]jsonTrunk	`json:"ports"`
+	Ports			[]jsonTrunk	`json:"trunks"`
 }
 
 type jsonTrunk struct {
@@ -28,7 +28,7 @@ type jsonTrunk struct {
 }
 
 type requestTrunk struct {
-	Port			jsonTrunkII	`json:"port"`
+	Port			jsonTrunkII	`json:"trunk"`
 }
 
 type jsonTrunkII struct {
@@ -39,12 +39,11 @@ type jsonTrunkII struct {
 }
 
 
-func getTrunk(PortName string) jsonTrunk {
+func getTrunk(PortName string, c *authInfo) jsonTrunk {
 	var result jsonTrunk
 	switchName := strings.Split(PortName, ":")[0]
-	//result.Name = strings.Split(PortName, ":")[1]
 	result.Name = PortName
-	_, _, config := getNamedConfiglet(switchName + "-ports")
+	_, _, config := getNamedConfiglet(switchName + "-ports", c)
 	ports := strings.Split(config, "!")
 	for _, port := range ports {
 		if strings.Contains(port, strings.Split(PortName, ":")[1]) {
@@ -58,8 +57,8 @@ func getTrunk(PortName string) jsonTrunk {
 					c := strings.Split(line, " ")
 					result.Descr = strings.Join(c[1:len(c)], " ")
 				}
-				if strings.Contains(line, "switchport trunk") { 
-					newline := strings.Replace(line, "switchport trunk allowed vlan", "", 1)
+				if strings.Contains(line, "switchport trunk vlan allowed") { 
+					newline := strings.Replace(line, "switchport trunk vlan allowed", "", 1)
 					words := strings.Split(newline, ",")
 					for _, word := range words {
 						word = strings.TrimSpace(word)
@@ -82,10 +81,10 @@ func getTrunk(PortName string) jsonTrunk {
 	return result
 }
 
-func getTrunks (switchNames []string) []jsonTrunk {
+func getTrunks (switchNames []string, c *authInfo) []jsonTrunk {
 	var trunkPorts []jsonTrunk 
 	for _, s := range switchNames {
-		_, _, config := getNamedConfiglet(s + "-ports")
+		_, _, config := getNamedConfiglet(s + "-ports", c)
 		ports := strings.Split(config, "!")
 		for _, port := range ports {
 			var temp jsonTrunk
@@ -103,8 +102,8 @@ func getTrunks (switchNames []string) []jsonTrunk {
 						c := strings.Split(line, " ")
 						temp.Descr = strings.Join(c[1:len(c)], " ")
 					}
-					if strings.Contains(line, "switchport trunk allowed vlan") { 
-						newline := strings.Replace(line, "switchport trunk allowed vlan", "", 1)
+					if strings.Contains(line, "switchport trunk vlan allowed") { 
+						newline := strings.Replace(line, "switchport trunk vlan allowed", "", 1)
 						words := strings.Split(newline, ",")
 						for _, word := range words {
 							word = strings.TrimSpace(word)
@@ -133,34 +132,38 @@ func getTrunks (switchNames []string) []jsonTrunk {
 }
 
 func trunks(w http.ResponseWriter, r *http.Request) {
+	c := &authInfo{}
+	extractCred(w, r, c)
 	if r.Method == "GET" {
-		key := getContainerKey(container)
-		switches := getSwitchNames(key)
+		key := getContainerKey(container, c)
+		switches := getSwitchNames(key, c)
 		var response netTrunks
-		response.Ports = getTrunks(switches)
+		response.Ports = getTrunks(switches, c)
 		temp, _ := json.Marshal(response)
 		fmt.Fprintln(w, string(temp))
 	}
 	if r.Method == "POST" {
 		b, _ := ioutil.ReadAll(r.Body)
 		r.Body.Close()
-		portToTrunk(&b)
+		portToTrunk(&b, c)
 	}
 }
 
 func trunk(w http.ResponseWriter, r *http.Request) {
+	c := &authInfo{}
+	extractCred(w, r, c)
 	components := strings.Split(r.URL.Path, "/")
 	p := components[len(components)-1]
 	if r.Method == "GET" {
 		var response netTrunk
-		response.Port = getTrunk(p)
+		response.Port = getTrunk(p, c)
 		temp, _ := json.Marshal(response)
 		fmt.Fprintln(w, string(temp))
 	}
 	if r.Method == "PUT" {
 		b, _ := ioutil.ReadAll(r.Body)
 		r.Body.Close()
-		trunkChange(&b, r.URL.Path)
+		trunkChange(&b, r.URL.Path, c)
 	}
 }
 
@@ -171,10 +174,10 @@ func trunkChangeVLAN(port string, vlan []int, i int) string {
 	}
 	lines := strings.Split(port, "\n")
 	for _, line := range lines {
-		if !(strings.Contains(strings.ToLower(line), "switchport trunk allowed vlan") || line == "") {
+		if !(strings.Contains(strings.ToLower(line), "switchport trunk vlan allowed") || line == "") {
 			newport += line + "\n"
-		} else if strings.Contains(strings.ToLower(line), "switchport trunk allowed vlan") {
-			newport += "\tswitchport trunk allowed vlan " + vlanInttoString(vlan) + "\n"
+		} else if strings.Contains(strings.ToLower(line), "switchport trunk vlan allowed") {
+			newport += "\tswitchport trunk vlan allowed" + vlanInttoString(vlan) + "\n"
 		}
 	}
 	return newport
@@ -261,15 +264,15 @@ func portChangetoTrunk(port string, vlan []int) string {
 	return newport
 }
  
-func trunkChange(request *[]byte, path string)  {
+func trunkChange(request *[]byte, path string, c *authInfo)  {
 	var p requestTrunk
 	_ = json.Unmarshal(*request, &p)
-	c := strings.Split(path, "/")
-	port := c[len(c)-1]
+	b := strings.Split(path, "/")
+	port := b[len(b)-1]
 	nameComponents := strings.Split(port, ":")
 	switchName := nameComponents[0]
 	intName := nameComponents[1]
-	key, name, config := getNamedConfiglet(switchName + "-ports")
+	key, name, config := getNamedConfiglet(switchName + "-ports", c)
 	ports := strings.Split(config, "!")
 	for i, port := range ports {
 		if strings.Contains(port, "interface " + intName) {
@@ -286,16 +289,16 @@ func trunkChange(request *[]byte, path string)  {
 		ports[i] = port
 	}
 	config = strings.Join(ports, "!")
-	_ = updateConfiglet(key, name, config)
+	_ = updateConfiglet(key, name, config, c)
 }
 
-func portToTrunk(request *[]byte)  {
+func portToTrunk(request *[]byte, c *authInfo)  {
 	var p requestTrunk
 	_ = json.Unmarshal(*request, &p)
-	c := strings.Split(p.Port.Name, ":")
-	switchName := c[0]
-	intName := c[1]
-	key, name, config := getNamedConfiglet(switchName + "-ports")
+	b := strings.Split(p.Port.Name, ":")
+	switchName := b[0]
+	intName := b[1]
+	key, name, config := getNamedConfiglet(switchName + "-ports", c)
 	ports := strings.Split(config, "!")
 	for i, port := range ports {
 		if strings.Contains(port, "interface " + intName) {
@@ -310,5 +313,5 @@ func portToTrunk(request *[]byte)  {
 		ports[i] = port
 	}
 	config = strings.Join(ports, "!")
-	_ = updateConfiglet(key, name, config)
+	_ = updateConfiglet(key, name, config, c)
 }
